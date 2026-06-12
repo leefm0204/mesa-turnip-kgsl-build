@@ -1,3 +1,5 @@
+# Code Refactored
+```yaml
 name: Build Mesa Turnip KGSL ARM64
 
 on:
@@ -16,121 +18,78 @@ jobs:
       PATCH_REPO: https://github.com/DvaMishkiLapa/mesa-turnip-kgsl-build.git
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    #------------------------------------------------------------
-    # Checkout
-    #------------------------------------------------------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            git wget \
+            meson ninja-build \
+            pkg-config \
+            python3-pip \
+            cmake \
+            rsync \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            pkg-config-aarch64-linux-gnu \
+            libdrm-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-randr0-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxrender-dev \
+            libv4l-dev \
+            libxcb-glx0-dev \
+            libxcb-shm0-dev \
+            libx11-xcb-dev \
+            libxcb-keysyms1-dev \
+            libxcb-dri2-0-dev \
+            libxcb-dri3-dev \
+            libxcb-present-dev \
+            libxshmfence-dev \
+            libxxf86vm-dev \
+            libxrandr-dev
 
+      - name: Prepare directories
+        run: mkdir -p $BUILD_DIR
 
-    #------------------------------------------------------------
-    # Install build dependencies
-    #------------------------------------------------------------
-    - name: Install dependencies
-      run: |
-        sudo apt update
+      - name: Clone Turnip KGSL patches
+        run: git clone --depth 1 $PATCH_REPO $BUILD_DIR/mesa-turnip-kgsl-build
 
-        sudo apt install -y \
-          git wget \
-          meson ninja-build \
-          pkg-config \
-          python3-pip \
-          cmake \
-          rsync \
-          gcc-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu \
-          pkg-config-aarch64-linux-gnu \
-          libdrm-dev \
-          libx11-dev \
-          libxcb1-dev \
-          libxcb-randr0-dev \
-          libxext-dev \
-          libxfixes-dev \
-          libxrender-dev \
-          libv4l-dev \
-          libxcb-glx0-dev \
-          libxcb-shm0-dev \
-          libx11-xcb-dev \
-          libxcb-keysyms1-dev \
-          libxcb-dri2-0-dev \
-          libxcb-dri3-dev \
-          libxcb-present-dev \
-          libxshmfence-dev \
-          libxxf86vm-dev \
-          libxrandr-dev
+      - name: Download Mesa source
+        run: |
+          wget -qO $BUILD_DIR/mesa-main.tar.gz https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.tar.gz
+          tar xf $BUILD_DIR/mesa-main.tar.gz -C $BUILD_DIR
 
+      - name: Apply Turnip patches
+        run: |
+          cd $BUILD_DIR/mesa-main
+          for p in $BUILD_DIR/mesa-turnip-kgsl-build/turnip-patches/*.patch; do
+            echo "Applying $(basename $p)"
+            if patch -p1 --dry-run < "$p"; then
+              patch -p1 < "$p"
+            else
+              echo "Already applied: $p"
+            fi
+          done
 
-    #------------------------------------------------------------
-    # Prepare workspace
-    #------------------------------------------------------------
-    - name: Prepare directories
-      run: |
-        mkdir -p $BUILD_DIR
-
-
-    #------------------------------------------------------------
-    # Clone Mesa patches
-    #------------------------------------------------------------
-    - name: Clone Turnip KGSL patches
-      run: |
-        git clone --depth 1 \
-          $PATCH_REPO \
-          $BUILD_DIR/mesa-turnip-kgsl-build
-
-
-    #------------------------------------------------------------
-    # Download Mesa
-    #------------------------------------------------------------
-    - name: Download Mesa source
-      run: |
-        wget -qO $BUILD_DIR/mesa-main.tar.gz \
-          https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.tar.gz
-
-        tar xf \
-          $BUILD_DIR/mesa-main.tar.gz \
-          -C $BUILD_DIR
-
-
-    #------------------------------------------------------------
-    # Apply patches
-    #------------------------------------------------------------
-    - name: Apply Turnip patches
-      run: |
-        cd $BUILD_DIR/mesa-main
-
-        for p in \
-          $BUILD_DIR/mesa-turnip-kgsl-build/turnip-patches/*.patch
-        do
-          echo "Applying $(basename $p)"
-
-          if patch -p1 --dry-run < "$p"; then
-            patch -p1 < "$p"
-          else
-            echo "Already applied: $p"
-          fi
-        done
-
-
-    #------------------------------------------------------------
-    # Generate Meson cross file
-    #------------------------------------------------------------
-    - name: Create ARM64 cross file
-      run: |
-        cat > $BUILD_DIR/cross_aarch64.txt <<EOF
+      - name: Create ARM64 cross file
+        run: |
+          cat > $BUILD_DIR/cross_aarch64.txt <<EOF
 [binaries]
 c = 'aarch64-linux-gnu-gcc'
 cpp = 'aarch64-linux-gnu-g++'
 pkg-config = 'aarch64-linux-gnu-pkg-config'
 strip = 'aarch64-linux-gnu-strip'
 
-
 [host_machine]
 system = 'linux'
 cpu_family = 'aarch64'
 cpu = 'armv8-a'
 endian = 'little'
-
 
 [built-in options]
 c_args = [
@@ -150,64 +109,39 @@ c_link_args = [
 ]
 EOF
 
+      - name: Configure Mesa ARM64
+        run: |
+          mkdir -p $BUILD_DIR/build_aarch64
+          meson setup \
+            $BUILD_DIR/build_aarch64 \
+            $BUILD_DIR/mesa-main \
+            --cross-file $BUILD_DIR/cross_aarch64.txt \
+            --prefix=/usr \
+            --libdir=lib/aarch64-linux-gnu \
+            --wrap-mode=nofallback \
+            -D vulkan-drivers=freedreno \
+            -D freedreno-kmds=kgsl \
+            -D gallium-drivers=freedreno \
+            -D glx=dri \
+            -D egl=enabled \
+            -D gles1=enabled \
+            -D gles2=enabled \
+            -D platforms=x11 \
+            -D gbm=enabled \
+            -D buildtype=release \
+            -D b_lto=true
 
-    #------------------------------------------------------------
-    # Configure Meson
-    #------------------------------------------------------------
-    - name: Configure Mesa ARM64
-      run: |
+      - name: Compile Mesa ARM64
+        run: ninja -C $BUILD_DIR/build_aarch64 -j$(nproc)
 
-        mkdir -p $BUILD_DIR/build_aarch64
+      - name: Stage ARM64 files
+        run: |
+          mkdir -p $BUILD_DIR/stage_aarch64
+          DESTDIR=$BUILD_DIR/stage_aarch64 ninja -C $BUILD_DIR/build_aarch64 install
 
-        meson setup \
-          $BUILD_DIR/build_aarch64 \
-          $BUILD_DIR/mesa-main \
-          --cross-file $BUILD_DIR/cross_aarch64.txt \
-          --prefix=/usr \
-          --libdir=lib/aarch64-linux-gnu \
-          --wrap-mode=nofallback \
-          -D vulkan-drivers=freedreno \
-          -D freedreno-kmds=kgsl \
-          -D gallium-drivers=freedreno \
-          -D glx=dri \
-          -D egl=enabled \
-          -D gles1=enabled \
-          -D gles2=enabled \
-          -D platforms=x11 \
-          -D gbm=enabled \
-          -D buildtype=release \
-          -D b_lto=true
+      - name: Upload ARM64 Mesa package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesa-turnip-arm64
+          path: mesa-build/stage_aarch64
 
-
-    #------------------------------------------------------------
-    # Build
-    #------------------------------------------------------------
-    - name: Compile Mesa ARM64
-      run: |
-        ninja \
-          -C $BUILD_DIR/build_aarch64 \
-          -j$(nproc)
-
-
-    #------------------------------------------------------------
-    # Stage install
-    #------------------------------------------------------------
-    - name: Stage ARM64 files
-      run: |
-
-        mkdir -p $BUILD_DIR/stage_aarch64
-
-        DESTDIR=$BUILD_DIR/stage_aarch64 \
-          ninja \
-          -C $BUILD_DIR/build_aarch64 \
-          install
-
-
-    #------------------------------------------------------------
-    # Upload artifacts
-    #------------------------------------------------------------
-    - name: Upload ARM64 Mesa package
-      uses: actions/upload-artifact@v4
-      with:
-        name: mesa-turnip-arm64
-        path: mesa-build/stage_aarch64
