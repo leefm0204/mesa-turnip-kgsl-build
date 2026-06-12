@@ -2,10 +2,11 @@
 name: Build Mesa Turnip KGSL ARM64
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build-arm64:
