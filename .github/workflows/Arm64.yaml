@@ -1,5 +1,4 @@
 # Code Refactored
-```yaml
 name: Build Mesa Turnip KGSL ARM64
 
 on:
