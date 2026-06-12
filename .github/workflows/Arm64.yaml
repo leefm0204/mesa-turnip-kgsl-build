@@ -1,4 +1,5 @@
-
+# Code Refactored
+```yaml
 name: Build Mesa Turnip (arm64)
 
 on:
@@ -21,38 +22,26 @@ jobs:
       REPO_DIR: ${{ github.workspace }}/mesa-build/mesa-turnip-kgsl-build
 
     steps:
-      # -----------------------------------------------------------------------
-      # 1. Checkout
-      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -----------------------------------------------------------------------
-      # 2. Prepare apt sources and add arm64 architecture
-      # -----------------------------------------------------------------------
-            - name: Prepare apt sources
+      - name: Prepare apt sources
         run: |
           . /etc/os-release
           CODENAME="$UBUNTU_CODENAME"
 
           # Back up existing sources if present
           if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-            sudo mv /etc/apt/sources.list.d/ubuntu.sources \
-                    /etc/apt/sources.list.d/ubuntu.sources.bak
+            sudo mv /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.bak
           fi
 
           sudo tee /etc/apt/sources.list > /dev/null <<EOF
-          # Ubuntu ${CODENAME} - main archive for x86_64
           deb http://archive.ubuntu.com/ubuntu ${CODENAME} main restricted universe multiverse
           deb-src http://archive.ubuntu.com/ubuntu ${CODENAME} main restricted universe multiverse
-
           deb http://archive.ubuntu.com/ubuntu ${CODENAME}-updates main restricted universe multiverse
           deb-src http://archive.ubuntu.com/ubuntu ${CODENAME}-updates main restricted universe multiverse
-
           deb http://security.ubuntu.com/ubuntu ${CODENAME}-security main restricted universe multiverse
           deb-src http://security.ubuntu.com/ubuntu ${CODENAME}-security main restricted universe multiverse
-
-          # Ubuntu-ports ${CODENAME} - for arm64 cross-compilation
           deb http://ports.ubuntu.com/ubuntu-ports ${CODENAME} main restricted universe multiverse
           deb http://ports.ubuntu.com/ubuntu-ports ${CODENAME}-updates main restricted universe multiverse
           deb http://ports.ubuntu.com/ubuntu-ports ${CODENAME}-security main restricted universe multiverse
@@ -61,9 +50,6 @@ jobs:
           sudo dpkg --add-architecture arm64
           sudo apt update && sudo apt upgrade -y
 
-      # -----------------------------------------------------------------------
-      # 3. Install build dependencies
-      # -----------------------------------------------------------------------
       - name: Install build dependencies
         run: |
           sudo apt build-dep -y mesa
@@ -93,13 +79,8 @@ jobs:
             libxrandr-dev:arm64
 
           # Workaround for missing headers
-          sudo cp /usr/include/libdrm/drm.h \
-                  /usr/include/libdrm/drm_mode.h \
-                  /usr/include/ || true
+          sudo cp /usr/include/libdrm/drm.h /usr/include/libdrm/drm_mode.h /usr/include/ || true
 
-      # -----------------------------------------------------------------------
-      # 4. Cache Mesa source tarball
-      # -----------------------------------------------------------------------
       - name: Cache Mesa source
         uses: actions/cache@v4
         id: cache-mesa
@@ -107,9 +88,6 @@ jobs:
           path: ${{ env.MESA_ARCHIVE }}
           key: mesa-main-tarball-${{ hashFiles('**/build-mesa.yml') }}
 
-      # -----------------------------------------------------------------------
-      # 5. Clone patches repository
-      # -----------------------------------------------------------------------
       - name: Fetch patches repository
         run: |
           mkdir -p "$BUILD_DIR"
@@ -119,23 +97,16 @@ jobs:
             git clone --depth 1 "$REPO_URL" "$REPO_DIR"
           fi
 
-      # -----------------------------------------------------------------------
-      # 6. Download and unpack Mesa
-      # -----------------------------------------------------------------------
       - name: Download and unpack Mesa
         run: |
           mkdir -p "$BUILD_DIR"
           if [ ! -f "$MESA_ARCHIVE" ]; then
-            wget -qO "$MESA_ARCHIVE" \
-              https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.tar.gz
+            wget -qO "$MESA_ARCHIVE" https://gitlab.freedesktop.org/mesa/mesa/-/archive/main/mesa-main.tar.gz
           fi
           if [ ! -d "$MESA_SRC" ]; then
             tar xf "$MESA_ARCHIVE" -C "$BUILD_DIR"
           fi
 
-      # -----------------------------------------------------------------------
-      # 7. Apply patches
-      # -----------------------------------------------------------------------
       - name: Apply patches
         run: |
           cd "$MESA_SRC"
@@ -148,9 +119,6 @@ jobs:
             fi
           done
 
-      # -----------------------------------------------------------------------
-      # 8. Generate Meson cross file for aarch64
-      # -----------------------------------------------------------------------
       - name: Generate Meson cross file (aarch64)
         run: |
           mkdir -p "$BUILD_DIR"
@@ -173,9 +141,6 @@ jobs:
           c_link_args = ['-Wl,--as-needed','-Wl,--gc-sections']
           EOF
 
-      # -----------------------------------------------------------------------
-      # 9. Meson setup (aarch64)
-      # -----------------------------------------------------------------------
       - name: Meson setup (aarch64)
         run: |
           rm -rf "$BUILD_DIR/build_aarch64"
@@ -198,15 +163,9 @@ jobs:
             -D buildtype=release \
             -D b_lto=true
 
-      # -----------------------------------------------------------------------
-      # 10. Ninja build (aarch64)
-      # -----------------------------------------------------------------------
       - name: Ninja build (aarch64)
         run: ninja -C "$BUILD_DIR/build_aarch64" -j"$(nproc)"
 
-      # -----------------------------------------------------------------------
-      # 11. Stage artifacts (aarch64)
-      # -----------------------------------------------------------------------
       - name: Stage artifacts (aarch64)
         run: |
           STG="$BUILD_DIR/stage_aarch64"
@@ -214,12 +173,10 @@ jobs:
           mkdir -p "$STG"
           DESTDIR="$STG" ninja -C "$BUILD_DIR/build_aarch64" install
 
-      # -----------------------------------------------------------------------
-      # 12. Upload staged artifacts
-      # -----------------------------------------------------------------------
       - name: Upload arm64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mesa-turnip-arm64
           path: ${{ env.BUILD_DIR }}/stage_aarch64/
           retention-days: 30
+
